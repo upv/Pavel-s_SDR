@@ -4,8 +4,7 @@ Created on Wed Sep 20 21:52:51 2023
 
 @author: trefi
 """
-import sys
-sys.path.append('/home/pavel/pyadi-iio/')
+
 import adi
 import time
 import matplotlib.pyplot as plt
@@ -13,9 +12,19 @@ import numpy as np
 import scipy
 import numpy.matlib
 
+# test mat load
+
+# pluto_2000000000.mat
+if 0:
+    path_load = f'C:\dev\git_tutor\python_sdr\pluto_2000000000.mat'
+    print(path_load)
+    mat = scipy.io.loadmat(path_load)
+    data = mat['data']
+    print(len(data[0]), len(data[1]))
+
 # load_idx = 1, 2
 load_idx = 2
-path_load = f'/home/pavel/Sources/SDR/pluto_{load_idx}.mat'
+path_load = f'C:\dev\git_tutor\python_sdr\pluto_{load_idx}.mat'
 
 # receiver params
 do_cfo_corr = 1
@@ -36,8 +45,27 @@ num_samps = tti_len * 20 # number of samples returned per call to rx()
 
 rng = np.random.RandomState(123)
 
+
+if use_sdr:
+    tx_gain0 = 0
+    sdr = adi.Pluto('ip:192.168.2.2')
+    sdr.gain_control_mode_chan0 = 'manual'
+    sdr.rx_hardwaregain_chan0 = 70.0 # dB
+    sdr.rx_lo = int(center_freq)
+    sdr.sample_rate = int(sample_rate)
+    sdr.rx_rf_bandwidth = int(sample_rate) # filter width, just set it to the same as sample rate for now
+    sdr.rx_buffer_size = num_samps
+    
+    '''Configure Tx properties'''
+    sdr.tx_rf_bandwidth = int(sample_rate)
+    sdr.tx_lo = int(center_freq)
+    sdr.tx_cyclic_buffer = True
+    sdr.tx_hardwaregain_chan0 = int(tx_gain0)
+    #sdr.tx_hardwaregain_chan1 = int(tx_gain1)
+    
+
 # OFDM sig parameters
-delta_t = 1 / sample_rate
+delta_t = 1 / sample_rate;
 
 delta_f = 30e3
 frac_guard = 0.5
@@ -68,12 +96,15 @@ preamble_full_cp = np.concatenate((preamble_full[-CP_len:], preamble_full))
 pream_len = preamble.shape[0]
 
 
-data_stream = rng.randint(0, 2, size=(int(BlockSize), 1))
+data_stream = rng.randint(0, 2, size=(int(BlockSize), 1));
 mod_sym_pilot = 1.0 - 2.0 * np.complex64(data_stream)
 
-tx_ofdm_sym = np.zeros((N_fft, 1), dtype=np.complex64)
-tx_ofdm_sym[0+do_dc_offset:int(N_sc_use/2) + do_dc_offset] = mod_sym_pilot[int(N_sc_use/2):]
-tx_ofdm_sym[-int(N_sc_use/2):] = mod_sym_pilot[0:int(N_sc_use/2)]
+tx_ofdm_sym = np.zeros((N_fft, 1), dtype=np.complex64);
+tx_ofdm_sym[0+do_dc_offset:int(N_sc_use/2) + do_dc_offset] = mod_sym_pilot[int(N_sc_use/2):];
+tx_ofdm_sym[-int(N_sc_use/2):] = mod_sym_pilot[0:int(N_sc_use/2)];
+
+#time_ofdm_sym_pilot = ifft(tx_ofdm_sym) * sqrt(N_fft) * signal_scale;
+#time_ofdm_sym_cp_pilot = [time_ofdm_sym_pilot(end - CP_len + 1:end); time_ofdm_sym_pilot_rep];
 
 time_ofdm_sym_pilot = np.fft.ifft(tx_ofdm_sym, N_fft, 0, norm="ortho")
 time_ofdm_sym_cp_pilot = np.concatenate(( time_ofdm_sym_pilot[-CP_len:] , time_ofdm_sym_pilot))
@@ -106,8 +137,8 @@ print(f'FrameLen={frame_len}')
 num_rep = 3
 full_frame_rep = np.matlib.repmat(full_frame, num_rep, 1)
 
-FrameSize = full_frame_rep.shape[0]
-sig_len = full_frame_rep.shape[0]
+FrameSize = full_frame_rep.shape[0];
+sig_len = full_frame_rep.shape[0];
 
 plt.figure(1)
 x_arr = np.arange(0, FrameSize)
@@ -117,14 +148,61 @@ plt.grid()
 #plt.show()
 
 
+if 0:
+    sdr.tx_buffer_size = FrameSize
+    sdr.tx(full_frame_rep[:,0] * 10024.0)
+    
+    #data = np.arange(1, 10, 3)
+    # Send
+    #sdr.tx(data)
+    print('Success tx')
+    ff = 1
+
+
 # dummy receiver
 if 1:
+    
+    # configure RxSDR
+    # Create radio
+    if 0:
+        sdr = adi.ad9361(uri='ip:192.168.2.1')
+        samp_rate = sample_rate    # must be <=30.72 MHz if both channels are enabled
+        num_samps = FrameSize      # number of samples per buffer.  Can be different for Rx and Tx
+        rx_lo = int(center_freq)
+        rx_mode = "slow_attack"  # can be "manual" or "slow_attack"
+        rx_gain0 = 40
+        rx_gain1 = 40
+        tx_lo = rx_lo
+        tx_gain0 = -10
+        tx_gain1 = -10
+        
+        '''Configure Rx properties'''
+        sdr.rx_enabled_channels = [0, 1]
+        sdr.sample_rate = int(samp_rate)
+        sdr.rx_lo = int(rx_lo)
+        sdr.gain_control_mode = rx_mode
+        sdr.rx_hardwaregain_chan0 = int(rx_gain0)
+        #sdr.rx_hardwaregain_chan1 = int(rx_gain1)
+        sdr.rx_buffer_size = int(num_samps)
+    
+    
     ts = 1 / float(sample_rate)
+    
+    #data = sdr.rx()
+    
+    
+    # save log in matfile
+    #path_save = f'C:\dev\git_tutor\python_sdr\pluto_{int(center_freq)}.mat'
+    #print(path_save)    
+    #scipy.io.savemat(path_save, {'data': data})    
+    #mat = scipy.io.loadmat('file.mat')
+    
     
     print(path_load)
     mat = scipy.io.loadmat(path_load)
     data = mat['data']
     
+
     Rx_0 = data[0]
     Rx_1 = data[1]
     
