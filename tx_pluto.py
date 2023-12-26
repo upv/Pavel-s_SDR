@@ -4,8 +4,9 @@ Created on Thu Sep 14 17:00:02 2023
 
 @author: trefi
 """
-
-#import adi
+import sys
+sys.path.append('/home/pavel/pyadi-iio/')
+import adi
 import time
 import matplotlib.pyplot as plt
 import numpy as np
