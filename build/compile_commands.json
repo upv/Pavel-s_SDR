@@ -1,0 +1,14 @@
+[
+{
+  "directory": "/home/pavel/SDR/SDR/build",
+  "command": "/home/pavel/.vcpkg/artifacts/2139c4c6/compilers.arm.armclang/6.21.0/bin/armclang --target=arm-arm-none-eabi  -I\"/home/pavel/SDR/SDR/Blank solution/Project_One/RTE/_Debug_STM32F407IGHx\" -I/home/pavel/.cache/arm/packs/ARM/CMSIS/6.0.0/CMSIS/Core/Include -I/home/pavel/.cache/arm/packs/Keil/STM32F4xx_DFP/2.17.1/Drivers/CMSIS/Device/ST/STM32F4xx/Include -mcpu=Cortex-M4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mlittle-endian -DSTM32F407xx -D_RTE_  -g -O0   --target=arm-arm-none-eabi -c -std=gnu11 -Wno-macro-redefined -Wno-pragma-pack -Wno-parentheses-equality -Wno-license-management -isystem \"/home/pavel/.vcpkg/artifacts/2139c4c6/compilers.arm.armclang/6.21.0/include\"  -o CMakeFiles/Project_One.dir/home/pavel/SDR/SDR/Blank_solution/Project_One/RTE/Device/STM32F407IGHx/system_stm32f4xx.o -c \"/home/pavel/SDR/SDR/Blank solution/Project_One/RTE/Device/STM32F407IGHx/system_stm32f4xx.c\"",
+  "file": "/home/pavel/SDR/SDR/Blank solution/Project_One/RTE/Device/STM32F407IGHx/system_stm32f4xx.c",
+  "output": "CMakeFiles/Project_One.dir/home/pavel/SDR/SDR/Blank_solution/Project_One/RTE/Device/STM32F407IGHx/system_stm32f4xx.o"
+},
+{
+  "directory": "/home/pavel/SDR/SDR/build",
+  "command": "/home/pavel/.vcpkg/artifacts/2139c4c6/compilers.arm.armclang/6.21.0/bin/armclang --target=arm-arm-none-eabi  -I\"/home/pavel/SDR/SDR/Blank solution/Project_One/RTE/_Debug_STM32F407IGHx\" -I/home/pavel/.cache/arm/packs/ARM/CMSIS/6.0.0/CMSIS/Core/Include -I/home/pavel/.cache/arm/packs/Keil/STM32F4xx_DFP/2.17.1/Drivers/CMSIS/Device/ST/STM32F4xx/Include -mcpu=Cortex-M4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mlittle-endian -DSTM32F407xx -D_RTE_  -g -O0   --target=arm-arm-none-eabi -c -std=gnu11 -Wno-macro-redefined -Wno-pragma-pack -Wno-parentheses-equality -Wno-license-management -isystem \"/home/pavel/.vcpkg/artifacts/2139c4c6/compilers.arm.armclang/6.21.0/include\"  -o CMakeFiles/Project_One.dir/home/pavel/SDR/SDR/Blank_solution/Project_One/main.o -c \"/home/pavel/SDR/SDR/Blank solution/Project_One/main.c\"",
+  "file": "/home/pavel/SDR/SDR/Blank solution/Project_One/main.c",
+  "output": "CMakeFiles/Project_One.dir/home/pavel/SDR/SDR/Blank_solution/Project_One/main.o"
+}
+]

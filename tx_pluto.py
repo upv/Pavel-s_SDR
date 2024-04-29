@@ -32,7 +32,7 @@ rng = np.random.RandomState(123)
 
 if use_sdr:
     tx_gain0 = 0
-    sdr = adi.Pluto('ip:192.168.2.2')
+    sdr = adi.Pluto('ip:192.168.2.1')
     sdr.gain_control_mode_chan0 = 'manual'
     sdr.rx_hardwaregain_chan0 = 70.0 # dB
     sdr.rx_lo = int(center_freq)

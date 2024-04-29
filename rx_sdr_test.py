@@ -4,7 +4,8 @@ Created on Wed Sep 20 21:23:05 2023
 
 @author: trefi
 """
-
+import sys
+sys.path.append('/home/pavel/pyadi-iio/')
 import adi
 import time
 import matplotlib.pyplot as plt
@@ -17,9 +18,9 @@ do_cfo_corr = 1
 do_ce = 0
 SNR = 5.0
 
-use_sdr = 0
+use_sdr = 1
 
-do_save_mat = 1
+do_save_mat = 0
 save_idx = 2
 
 sample_rate = 20e6 # Hz
@@ -33,7 +34,7 @@ rng = np.random.RandomState(123)
 
 if use_sdr:
     tx_gain0 = 0
-    sdr = adi.Pluto('ip:192.168.2.2')
+    sdr = adi.Pluto('ip:192.168.2.1')
     sdr.gain_control_mode_chan0 = 'manual'
     sdr.rx_hardwaregain_chan0 = 70.0 # dB
     sdr.rx_lo = int(center_freq)
@@ -50,7 +51,7 @@ if use_sdr:
     
 
 # OFDM sig parameters
-delta_t = 1 / sample_rate;
+delta_t = 1 / sample_rate
 
 delta_f = 30e3
 frac_guard = 0.5

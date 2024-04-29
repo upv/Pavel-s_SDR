@@ -1,0 +1,4 @@
+/home/pavel/SDR/SDR/build/CMakeFiles/database.dir
+/home/pavel/SDR/SDR/build/CMakeFiles/Project_One.dir
+/home/pavel/SDR/SDR/build/CMakeFiles/edit_cache.dir
+/home/pavel/SDR/SDR/build/CMakeFiles/rebuild_cache.dir
