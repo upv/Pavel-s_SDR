@@ -45,7 +45,7 @@ blocks:
     start: int(92e6)
     step: int(10000)
     stop: int(106e6)
-    value: int(100.1e6)
+    value: int(95.2e6)
     widget: counter_slider
   states:
     bus_sink: false
