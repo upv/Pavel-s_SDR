@@ -1,3 +1,6 @@
 {
-    "cmake.sourceDirectory": "/home/pavel/SDR/SDR/Blank solution/tmp/Project_One/STM32F407IGHx/Debug"
+    "cmake.sourceDirectory": "/home/pavel/SDR/SDR/Blank solution/tmp/Project_One/STM32F407IGHx/Debug",
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "python-envs.pythonProjects": []
 }
