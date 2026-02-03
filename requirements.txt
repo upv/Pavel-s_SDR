@@ -1,0 +1,12 @@
+# Core scientific stack
+numpy
+matplotlib
+scipy
+ipykernel
+
+# SDR / Pluto (Analog Devices IIO)
+pyadi-iio
+
+# Optional: OFDM/ML (ofdm_transceiver.py)
+# sionna
+# tensorflow
