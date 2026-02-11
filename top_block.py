@@ -9,11 +9,11 @@
 # Author: Jay Patel
 # Copyright: 2020
 # Description: FM Radio PlutoSDR
-# GNU Radio version: 3.10.11.0
+# GNU Radio version: 3.10.7.0
 
+from packaging.version import Version as StrictVersion
 from PyQt5 import Qt
 from gnuradio import qtgui
-from PyQt5 import QtCore
 from gnuradio import analog
 from gnuradio import audio
 from gnuradio import filter
@@ -27,8 +27,9 @@ from argparse import ArgumentParser
 from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
 from gnuradio import iio
+from gnuradio.qtgui import Range, RangeWidget
+from PyQt5 import QtCore
 import sip
-import threading
 
 
 
@@ -55,15 +56,15 @@ class top_block(gr.top_block, Qt.QWidget):
         self.top_grid_layout = Qt.QGridLayout()
         self.top_layout.addLayout(self.top_grid_layout)
 
-        self.settings = Qt.QSettings("gnuradio/flowgraphs", "top_block")
+        self.settings = Qt.QSettings("GNU Radio", "top_block")
 
         try:
-            geometry = self.settings.value("geometry")
-            if geometry:
-                self.restoreGeometry(geometry)
+            if StrictVersion(Qt.qVersion()) < StrictVersion("5.0.0"):
+                self.restoreGeometry(self.settings.value("geometry").toByteArray())
+            else:
+                self.restoreGeometry(self.settings.value("geometry"))
         except BaseException as exc:
             print(f"Qt GUI: Could not restore geometry: {str(exc)}", file=sys.stderr)
-        self.flowgraph_started = threading.Event()
 
         ##################################################
         # Parameters
@@ -82,8 +83,8 @@ class top_block(gr.top_block, Qt.QWidget):
         # Blocks
         ##################################################
 
-        self._fm_station_range = qtgui.Range(int(92e6), int(106e6), int(10000), int(95.2e6), 200)
-        self._fm_station_win = qtgui.RangeWidget(self._fm_station_range, self.set_fm_station, "station", "counter_slider", int, QtCore.Qt.Horizontal)
+        self._fm_station_range = Range(int(92e6), int(106e6), int(10000), int(95.2e6), 200)
+        self._fm_station_win = RangeWidget(self._fm_station_range, self.set_fm_station, "station", "counter_slider", int, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._fm_station_win)
         self.qtgui_sink_x_0 = qtgui.sink_c(
             1024, #fftsize
@@ -139,7 +140,7 @@ class top_block(gr.top_block, Qt.QWidget):
 
 
     def closeEvent(self, event):
-        self.settings = Qt.QSettings("gnuradio/flowgraphs", "top_block")
+        self.settings = Qt.QSettings("GNU Radio", "top_block")
         self.settings.setValue("geometry", self.saveGeometry())
         self.stop()
         self.wait()
@@ -202,15 +203,15 @@ def argument_parser():
 def main(top_block_cls=top_block, options=None):
     if options is None:
         options = argument_parser().parse_args()
-    if gr.enable_realtime_scheduling() != gr.RT_OK:
-        gr.logger("realtime").warn("Error: failed to enable real-time scheduling.")
 
+    if StrictVersion("4.5.0") <= StrictVersion(Qt.qVersion()) < StrictVersion("5.0.0"):
+        style = gr.prefs().get_string('qtgui', 'style', 'raster')
+        Qt.QApplication.setGraphicsSystem(style)
     qapp = Qt.QApplication(sys.argv)
 
     tb = top_block_cls(audio_device=options.audio_device, decimation=options.decimation, uri=options.uri)
 
     tb.start()
-    tb.flowgraph_started.set()
 
     tb.show()
 
