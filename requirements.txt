@@ -7,6 +7,9 @@ ipykernel
 # SDR / Pluto (Analog Devices IIO)
 pyadi-iio
 
+# FM radio (fmradio.py)
+sounddevice
+
 # Optional: OFDM/ML (ofdm_transceiver.py)
 # sionna
 # tensorflow
