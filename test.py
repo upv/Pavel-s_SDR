@@ -11,18 +11,18 @@ import numpy as np
 def main():
     # Create radio
     sdr = adi.ad9363("ip:192.168.2.2")
-    samp_rate = 20e6
+    samp_rate = 1e6
 
     # Configure Rx properties
     sdr.rx_enabled_channels = [0, 1]
     sdr.sample_rate = int(samp_rate)
-    sdr.rx_rf_bandwidth = int(2e6)
-    sdr.rx_lo = int(2.71e9)
+    sdr.rx_rf_bandwidth = int(1e6)
+    sdr.rx_lo = int(1.19e9)
     sdr.rx_buffer_size = 8192
     sdr.gain_control_mode_chan0 = "manual"
     sdr.gain_control_mode_chan1 = "manual"
-    sdr.rx_hardwaregain_chan0 = int(40)
-    sdr.rx_hardwaregain_chan1 = int(40)
+    sdr.rx_hardwaregain_chan0 = int(-10)
+    sdr.rx_hardwaregain_chan1 = int(-10)
 
     plt.ion()
     fig, axes = plt.subplots(2, 2, figsize=(12, 8))

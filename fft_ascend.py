@@ -1,6 +1,10 @@
 import sys
-sys.path.append('/home/HwHiAiUser/pyadi-iio/')
-sys.path.append('/home/HwHiAiUser/libiio')
+# sys.path.append('/home/HwHiAiUser/pyadi-iio/')
+# sys.path.append('/home/HwHiAiUser/libiio')
+
+sys.path.append("/home/pavel/pyadi-iio/")
+sys.path.append("/home/pavel/libiio")
+
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -8,10 +12,10 @@ import adi
 from scipy.signal import get_window
 
 # === SDR CONFIGURATION ===
-sdr = adi.ad9361(uri="ip:192.168.2.1")  # Change if needed
+sdr = adi.ad9361(uri="ip:192.168.2.2")  # Change if needed
 sdr.rx_enabled_channels = [0, 1]
-sdr.sample_rate = int(2e6)
-sdr.rx_lo = int(1.85e9)
+sdr.sample_rate = int(1e6)
+sdr.rx_lo = int(1.19e9)
 sdr.rx_buffer_size = int(4096)
 sdr.rx_rf_bandwidth = int(1e6)
 
