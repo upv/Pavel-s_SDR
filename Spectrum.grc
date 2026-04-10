@@ -37,7 +37,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: int(1190e6)
+    value: int(2190e6)
   states:
     bus_sink: false
     bus_source: false
@@ -57,37 +57,6 @@ blocks:
     coordinate: [176, 8.0]
     rotation: 0
     state: enabled
-- name: iio_pluto_source_0
-  id: iio_pluto_source
-  parameters:
-    affinity: ''
-    alias: ''
-    bandwidth: '1500000'
-    bbdc: 'True'
-    buffer_size: int(8200)
-    comment: ''
-    filter: ''
-    filter_source: '''Auto'''
-    fpass: '0'
-    frequency: int(100e6)
-    fstop: '0'
-    gain1: '''manual'''
-    len_tag_key: packet_len
-    manual_gain1: '100'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    quadrature: 'True'
-    rfdc: 'True'
-    samplerate: sample_rate
-    type: fc32
-    uri: 192.168.2.2
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [176, 172.0]
-    rotation: 0
-    state: true
 - name: qtgui_sink_x_0
   id: qtgui_sink_x
   parameters:
@@ -96,7 +65,7 @@ blocks:
     bw: sample_rate
     comment: ''
     fc: Central_Frequency
-    fftsize: '1024'
+    fftsize: '4096'
     gui_hint: ''
     maxoutbuf: '0'
     minoutbuf: '0'
@@ -117,9 +86,31 @@ blocks:
     coordinate: [600, 224.0]
     rotation: 0
     state: enabled
+- name: soapy_plutosdr_source_0
+  id: soapy_plutosdr_source
+  parameters:
+    affinity: ''
+    agc: 'False'
+    alias: ''
+    bandwidth: int(1e6)
+    center_freq: Central_Frequency
+    comment: ''
+    dev_args: 192.168.2.2
+    gain: '73'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    samp_rate: sample_rate
+    type: fc32
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [248, 224.0]
+    rotation: 0
+    state: enabled
 
 connections:
-- [iio_pluto_source_0, '0', qtgui_sink_x_0, '0']
+- [soapy_plutosdr_source_0, '0', qtgui_sink_x_0, '0']
 
 metadata:
   file_format: 1

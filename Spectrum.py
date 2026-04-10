@@ -19,7 +19,7 @@ from PyQt5 import Qt
 from argparse import ArgumentParser
 from gnuradio.eng_arg import eng_float, intx
 from gnuradio import eng_notation
-from gnuradio import iio
+from gnuradio import soapy
 import sip
 
 
@@ -60,14 +60,27 @@ class Spectrum(gr.top_block, Qt.QWidget):
         # Variables
         ##################################################
         self.sample_rate = sample_rate = int(1e6)
-        self.Central_Frequency = Central_Frequency = int(1190e6)
+        self.Central_Frequency = Central_Frequency = int(2190e6)
 
         ##################################################
         # Blocks
         ##################################################
 
+        self.soapy_plutosdr_source_0 = None
+        dev = 'driver=plutosdr'
+        stream_args = ''
+        tune_args = ['']
+        settings = ['']
+
+        self.soapy_plutosdr_source_0 = soapy.source(dev, "fc32", 1, '192.168.2.2',
+                                  stream_args, tune_args, settings)
+        self.soapy_plutosdr_source_0.set_sample_rate(0, sample_rate)
+        self.soapy_plutosdr_source_0.set_bandwidth(0, int(1e6))
+        self.soapy_plutosdr_source_0.set_gain_mode(0, False)
+        self.soapy_plutosdr_source_0.set_frequency(0, Central_Frequency)
+        self.soapy_plutosdr_source_0.set_gain(0, min(max(73, 0.0), 73.0))
         self.qtgui_sink_x_0 = qtgui.sink_c(
-            1024, #fftsize
+            4096, #fftsize
             window.WIN_BLACKMAN_hARRIS, #wintype
             Central_Frequency, #fc
             sample_rate, #bw
@@ -84,22 +97,12 @@ class Spectrum(gr.top_block, Qt.QWidget):
         self.qtgui_sink_x_0.enable_rf_freq(False)
 
         self.top_layout.addWidget(self._qtgui_sink_x_0_win)
-        self.iio_pluto_source_0 = iio.fmcomms2_source_fc32('192.168.2.2' if '192.168.2.2' else iio.get_pluto_uri(), [True, True], int(8200))
-        self.iio_pluto_source_0.set_len_tag_key('packet_len')
-        self.iio_pluto_source_0.set_frequency(int(100e6))
-        self.iio_pluto_source_0.set_samplerate(sample_rate)
-        self.iio_pluto_source_0.set_gain_mode(0, 'manual')
-        self.iio_pluto_source_0.set_gain(0, 100)
-        self.iio_pluto_source_0.set_quadrature(True)
-        self.iio_pluto_source_0.set_rfdc(True)
-        self.iio_pluto_source_0.set_bbdc(True)
-        self.iio_pluto_source_0.set_filter_params('Auto', '', 0, 0)
 
 
         ##################################################
         # Connections
         ##################################################
-        self.connect((self.iio_pluto_source_0, 0), (self.qtgui_sink_x_0, 0))
+        self.connect((self.soapy_plutosdr_source_0, 0), (self.qtgui_sink_x_0, 0))
 
 
     def closeEvent(self, event):
@@ -115,8 +118,8 @@ class Spectrum(gr.top_block, Qt.QWidget):
 
     def set_sample_rate(self, sample_rate):
         self.sample_rate = sample_rate
-        self.iio_pluto_source_0.set_samplerate(self.sample_rate)
         self.qtgui_sink_x_0.set_frequency_range(self.Central_Frequency, self.sample_rate)
+        self.soapy_plutosdr_source_0.set_sample_rate(0, self.sample_rate)
 
     def get_Central_Frequency(self):
         return self.Central_Frequency
@@ -124,6 +127,7 @@ class Spectrum(gr.top_block, Qt.QWidget):
     def set_Central_Frequency(self, Central_Frequency):
         self.Central_Frequency = Central_Frequency
         self.qtgui_sink_x_0.set_frequency_range(self.Central_Frequency, self.sample_rate)
+        self.soapy_plutosdr_source_0.set_frequency(0, self.Central_Frequency)
 
 
 

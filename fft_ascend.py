@@ -15,9 +15,14 @@ from scipy.signal import get_window
 sdr = adi.ad9361(uri="ip:192.168.2.2")  # Change if needed
 sdr.rx_enabled_channels = [0, 1]
 sdr.sample_rate = int(1e6)
-sdr.rx_lo = int(1.19e9)
+sdr.rx_lo = int(2.19e9)
 sdr.rx_buffer_size = int(4096)
 sdr.rx_rf_bandwidth = int(1e6)
+
+sdr.gain_control_mode_chan0 = "manual"
+sdr.gain_control_mode_chan1 = "manual"
+sdr.rx_hardwaregain_chan0 = int(40)
+sdr.rx_hardwaregain_chan1 = int(40)
 
 # === FFT CONFIGURATION ===
 N = sdr.rx_buffer_size
