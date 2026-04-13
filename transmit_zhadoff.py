@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AD9361: OFDM with Zadoff–Chu preamble (2 TX), then QPSK random data.
+AD9361: OFDM with Zadoff–Chu preamble (2 TX), then deterministic QPSK payload.
 Subcarrier spacing 30 kHz, N_FFT=1024 → Fs = N * Δf = 30.72 MHz.
 Includes cyclic prefix, frequency guard subcarriers, and optional inter-symbol zero guard.
 """
@@ -33,6 +33,9 @@ ZC_ROOT_CH1 = 13
 
 # Frame: 1 ZC–OFDM preamble symbol + this many data OFDM symbols (repeated cyclically)
 N_DATA_SYMBOLS = 32
+
+# Shared deterministic payload seed (must match receiver_zhadoff.py)
+PAYLOAD_SEED = 20260413
 
 # DAC scaling (Pluto / AD9361 style int16 path; pyadi packs complex → int16)
 TX_SCALE = 1.0 * (2**14)
@@ -92,24 +95,43 @@ def build_data_symbol(rng: np.random.Generator, n_fft: int) -> np.ndarray:
     return freq_frame_to_time(X, n_fft, N_CP, N_GUARD_SAMPLES)
 
 
+def qpsk_map_bits(bits: np.ndarray) -> np.ndarray:
+    return (1.0 / np.sqrt(2.0)) * ((1 - 2 * bits[..., 0]) + 1j * (1 - 2 * bits[..., 1]))
+
+
+def build_deterministic_payload_time(seed: int, n_fft: int) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Build deterministic OFDM QPSK payload and return:
+      - concatenated time-domain payload symbols
+      - reference bits with shape [N_DATA_SYMBOLS, N_SC_DATA, 2]
+    """
+    rng = np.random.default_rng(seed)
+    bits = rng.integers(0, 2, size=(N_DATA_SYMBOLS, N_SC_DATA, 2), dtype=np.int8)
+    qpsk = qpsk_map_bits(bits)
+    idx, _, _ = active_subcarrier_indices(n_fft, N_SC_DATA)
+    half = N_SC_DATA // 2
+    syms_t = []
+    for s in range(N_DATA_SYMBOLS):
+        X = np.zeros(n_fft, dtype=np.complex128)
+        X[idx[:half]] = qpsk[s, :half]
+        X[idx[half:]] = qpsk[s, half:]
+        syms_t.append(freq_frame_to_time(X, n_fft, N_CP, N_GUARD_SAMPLES))
+    return np.concatenate(syms_t).astype(np.complex64), bits
+
+
 def build_frame_complex64(
-    rng: np.random.Generator, zc_root_ch0: int, zc_root_ch1: int
+    zc_root_ch0: int, zc_root_ch1: int
 ) -> tuple[np.ndarray, np.ndarray]:
     pre0 = build_zc_preamble(N_FFT, zc_root_ch0)
     pre1 = build_zc_preamble(N_FFT, zc_root_ch1)
-    syms0 = [pre0]
-    syms1 = [pre1]
-    for _ in range(N_DATA_SYMBOLS):
-        syms0.append(build_data_symbol(rng, N_FFT))
-        syms1.append(build_data_symbol(rng, N_FFT))
-    t0 = np.concatenate(syms0).astype(np.complex64)
-    t1 = np.concatenate(syms1).astype(np.complex64)
+    payload0_t, _ = build_deterministic_payload_time(PAYLOAD_SEED + 0, N_FFT)
+    payload1_t, _ = build_deterministic_payload_time(PAYLOAD_SEED + 1, N_FFT)
+    t0 = np.concatenate([pre0, payload0_t]).astype(np.complex64)
+    t1 = np.concatenate([pre1, payload1_t]).astype(np.complex64)
     return t0, t1
 
 
 def main() -> None:
-    rng = np.random.default_rng()
-
     sdr = adi.ad9361(URI_TX)
     sdr.sample_rate = FS
     sdr.tx_lo = LO
@@ -121,7 +143,7 @@ def main() -> None:
     sdr.tx_hardwaregain_chan1 = int(-20)
     sdr.tx_cyclic_buffer = True
 
-    t0, t1 = build_frame_complex64(rng, ZC_ROOT_CH0, ZC_ROOT_CH1)
+    t0, t1 = build_frame_complex64(ZC_ROOT_CH0, ZC_ROOT_CH1)
     n = min(len(t0), len(t1))
     t0 = t0[:n] * TX_SCALE
     t1 = t1[:n] * TX_SCALE
@@ -132,7 +154,8 @@ def main() -> None:
     )
     print(
         f"Preamble: ZC OFDM (roots {ZC_ROOT_CH0} / {ZC_ROOT_CH1}), "
-        f"then {N_DATA_SYMBOLS} QPSK data symbols per channel (cyclic TX)."
+        f"then {N_DATA_SYMBOLS} deterministic QPSK symbols per channel (cyclic TX). "
+        f"payload_seed={PAYLOAD_SEED} (ch1 uses seed+1)."
     )
 
     sdr.tx([t0, t1])

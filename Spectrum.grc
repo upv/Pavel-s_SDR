@@ -37,7 +37,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: int(2190e6)
+    value: int(3190e6)
   states:
     bus_sink: false
     bus_source: false
@@ -49,7 +49,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: int(1e6)
+    value: int(30.72e6)
   states:
     bus_sink: false
     bus_source: false
@@ -65,7 +65,7 @@ blocks:
     bw: sample_rate
     comment: ''
     fc: Central_Frequency
-    fftsize: '4096'
+    fftsize: '1024'
     gui_hint: ''
     maxoutbuf: '0'
     minoutbuf: '0'
