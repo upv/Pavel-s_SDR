@@ -38,6 +38,7 @@ PAYLOAD_SEED = 20260413
 # Receiver settings
 RX_GAIN_CH0 = 40
 RX_GAIN_CH1 = 40
+CFO_MAX_HZ = 100e3
 
 
 def zadoff_chu(length: int, root: int) -> np.ndarray:
@@ -89,15 +90,73 @@ def qpsk_bits_from_symbols(sym: np.ndarray) -> np.ndarray:
 def find_preamble_start(rx: np.ndarray, preamble: np.ndarray) -> tuple[int, float, float]:
     """
     Returns:
-        start_idx, peak_value, peak_to_median_ratio
+        start_idx, peak_norm_corr, peak_to_median_ratio
     """
     if len(rx) < len(preamble):
         return 0, 0.0, 0.0
-    corr = np.abs(np.convolve(rx, preamble[::-1].conj(), mode="valid"))
-    peak_idx = int(np.argmax(corr))
-    peak = float(corr[peak_idx])
-    med = float(np.median(corr) + 1e-12)
+
+    # Normalized correlation for robust preamble search under gain variation.
+    corr = np.convolve(rx, preamble[::-1].conj(), mode="valid")
+    corr_abs = np.abs(corr)
+    pre_energy = float(np.sum(np.abs(preamble) ** 2))
+    win = np.ones(len(preamble), dtype=np.float64)
+    rx_energy = np.convolve(np.abs(rx) ** 2, win, mode="valid")
+    norm_corr = corr_abs / (np.sqrt(rx_energy * pre_energy) + 1e-12)
+
+    peak_idx = int(np.argmax(norm_corr))
+    peak = float(norm_corr[peak_idx])
+    med = float(np.median(norm_corr) + 1e-12)
     return peak_idx, peak, peak / med
+
+
+def detect_best_preamble(
+    rx: np.ndarray, pre_a: np.ndarray, pre_b: np.ndarray
+) -> tuple[int, float, float, int, float, float]:
+    """
+    Returns (st_a, pk_a, rat_a, st_b, pk_b, rat_b) for two candidate preambles.
+    """
+    st_a, pk_a, rat_a = find_preamble_start(rx, pre_a)
+    st_b, pk_b, rat_b = find_preamble_start(rx, pre_b)
+    return st_a, pk_a, rat_a, st_b, pk_b, rat_b
+
+
+def estimate_cfo_hz_from_preamble(rx_pre: np.ndarray, tx_pre: np.ndarray, fs: float) -> float:
+    """
+    Estimate CFO using phase slope in rx_pre * conj(tx_pre).
+    Returns CFO in Hz.
+    """
+    n = min(len(rx_pre), len(tx_pre))
+    if n < 4:
+        return 0.0
+    z = rx_pre[:n] * np.conj(tx_pre[:n])
+    dphi = np.angle(np.sum(z[1:] * np.conj(z[:-1])))
+    return float(dphi * fs / (2.0 * np.pi))
+
+
+def apply_cfo_correction(x: np.ndarray, cfo_hz: float, fs: float) -> np.ndarray:
+    n = np.arange(len(x), dtype=np.float64)
+    rot = np.exp(-1j * 2.0 * np.pi * cfo_hz * n / fs)
+    return x * rot
+
+
+def equalize_and_detect_bits(rx_sc: np.ndarray, ref_qpsk: np.ndarray) -> tuple[np.ndarray, np.ndarray, str]:
+    """
+    Return (eq_symbols, detected_bits, mode)
+    mode:
+      - "direct": rx ~ h * ref
+      - "conjugate": rx ~ h * conj(ref)
+    """
+    # Hypothesis 1: direct complex path
+    h_d = np.mean(rx_sc * np.conj(ref_qpsk), axis=0) / (np.mean(np.abs(ref_qpsk) ** 2, axis=0) + 1e-12)
+    eq_d = rx_sc / (h_d[None, :] + 1e-12)
+    bits_d = qpsk_bits_from_symbols(eq_d)
+
+    # Hypothesis 2: IQ-conjugated path
+    h_c = np.mean(rx_sc * ref_qpsk, axis=0) / (np.mean(np.abs(ref_qpsk) ** 2, axis=0) + 1e-12)
+    eq_c = np.conj(rx_sc / (h_c[None, :] + 1e-12))
+    bits_c = qpsk_bits_from_symbols(eq_c)
+
+    return eq_d, bits_d, "direct", eq_c, bits_c, "conjugate"
 
 
 def extract_data_symbols(
@@ -125,8 +184,8 @@ def main() -> None:
     pre0 = build_zc_preamble_time(ZC_ROOT_CH0)
     pre1 = build_zc_preamble_time(ZC_ROOT_CH1)
     idx_data = active_subcarrier_indices(N_FFT, N_SC_DATA)
-    ref_bits0 = deterministic_payload_bits(PAYLOAD_SEED + 0)
-    ref_bits1 = deterministic_payload_bits(PAYLOAD_SEED + 1)
+    ref_bits0 = deterministic_payload_bits(PAYLOAD_SEED + 0)  # TX ch0 payload
+    ref_bits1 = deterministic_payload_bits(PAYLOAD_SEED + 1)  # TX ch1 payload
     ref_qpsk0 = qpsk_map_bits(ref_bits0)
     ref_qpsk1 = qpsk_map_bits(ref_bits1)
 
@@ -146,27 +205,47 @@ def main() -> None:
     sdr.rx_hardwaregain_chan1 = int(RX_GAIN_CH1)
 
     plt.ion()
-    fig, ax = plt.subplots(figsize=(10, 5))
-    line_ber0, = ax.semilogy([], [], label="BER ch0")
-    line_ber1, = ax.semilogy([], [], label="BER ch1")
-    ax.set_xlabel("Time, s")
-    ax.set_ylabel("BER")
-    ax.set_ylim(1e-7, 5e-1)
-    ax.grid(True, which="both")
-    ax.legend(loc="upper right")
+    fig, (ax_ber, ax_cnst) = plt.subplots(2, 1, figsize=(10, 8), height_ratios=[1.1, 1.0])
+    line_ber0, = ax_ber.semilogy([], [], label="cum BER ch0", color="C0")
+    line_ber1, = ax_ber.semilogy([], [], label="cum BER ch1", color="C1")
+    ax_ber.set_xlabel("Time, s")
+    ax_ber.set_ylabel("Cumulative BER (errors / total bits)")
+    ax_ber.set_ylim(1e-7, 0.5)
+    ax_ber.grid(True, which="both")
+    ax_ber.legend(loc="upper right")
+    ax_ber.set_title("BER since start (smoothes per-frame noise)")
+
+    sc_plot0 = ax_cnst.scatter([], [], s=4, alpha=0.35, c="C0", label="ch0 (eq)")
+    sc_plot1 = ax_cnst.scatter([], [], s=4, alpha=0.35, c="C1", label="ch1 (eq)")
+    ax_cnst.set_aspect("equal", adjustable="box")
+    ax_cnst.set_xlim(-1.6, 1.6)
+    ax_cnst.set_ylim(-1.6, 1.6)
+    ax_cnst.axhline(0, color="gray", linewidth=0.5)
+    ax_cnst.axvline(0, color="gray", linewidth=0.5)
+    ax_cnst.set_xlabel("I (real)")
+    ax_cnst.set_ylabel("Q (imag)")
+    ax_cnst.set_title("Equalized QPSK symbols (last frame)")
+    ax_cnst.legend(loc="upper right", fontsize=8)
+    ax_cnst.grid(True, alpha=0.3)
     fig.tight_layout()
 
     t_hist: list[float] = []
-    ber0_hist: list[float] = []
-    ber1_hist: list[float] = []
+    ber_cum0_hist: list[float] = []
+    ber_cum1_hist: list[float] = []
+    cum_err0 = 0
+    cum_err1 = 0
+    cum_bits = 0
     t0_wall = None
+    _const_max_pts = 4000
 
     print(
         f"RX ready: Fs={FS/1e6:.3f} MHz, LO={LO/1e9:.6f} GHz, "
         f"N_FFT={N_FFT}, N_CP={N_CP}, frame_len={frame_len}, rx_buffer={rx_buffer_size}"
     )
-    print(f"Expecting ZC roots: ch0={ZC_ROOT_CH0}, ch1={ZC_ROOT_CH1}")
+    print(f"Expecting ZC roots: tx-ch0={ZC_ROOT_CH0}, tx-ch1={ZC_ROOT_CH1}")
     print(f"True BER mode: deterministic payload seed={PAYLOAD_SEED} (ch1 uses seed+1).")
+    print("Auto-mapping enabled: RX channels are matched to TX roots each buffer.")
+    print("Each lock: prints BER (frame + cumulative); plot shows BER + constellation.")
     print("Press Ctrl+C to stop.\n")
 
     try:
@@ -184,86 +263,156 @@ def main() -> None:
             rx0 = rx0 - np.mean(rx0)
             rx1 = rx1 - np.mean(rx1)
 
-            st0, pk0, rat0 = find_preamble_start(rx0, pre0)
-            st1, pk1, rat1 = find_preamble_start(rx1, pre1)
+            st00, pk00, rat00, st01, pk01, rat01 = detect_best_preamble(rx0, pre0, pre1)
+            st10, pk10, rat10, st11, pk11, rat11 = detect_best_preamble(rx1, pre0, pre1)
 
-            # Require a modest correlation margin to treat as a lock
-            lock0 = rat0 > 6.0 and (st0 + frame_len <= len(rx0))
-            lock1 = rat1 > 6.0 and (st1 + frame_len <= len(rx1))
+            # Two possible assignments:
+            # A: rx0->tx0(root0), rx1->tx1(root1)
+            score_a = pk00 + pk11
+            # B: rx0->tx1(root1), rx1->tx0(root0)
+            score_b = pk01 + pk10
+
+            if score_a >= score_b:
+                # mapping: rx0 uses tx0 refs, rx1 uses tx1 refs
+                map_name = "A(rx0->tx0, rx1->tx1)"
+                st_rx0, pk_rx0, rat_rx0, pre_rx0 = st00, pk00, rat00, pre0
+                st_rx1, pk_rx1, rat_rx1, pre_rx1 = st11, pk11, rat11, pre1
+                ref_bits_rx0, ref_bits_rx1 = ref_bits0, ref_bits1
+                ref_qpsk_rx0, ref_qpsk_rx1 = ref_qpsk0, ref_qpsk1
+            else:
+                # mapping: rx0 uses tx1 refs, rx1 uses tx0 refs
+                map_name = "B(rx0->tx1, rx1->tx0)"
+                st_rx0, pk_rx0, rat_rx0, pre_rx0 = st01, pk01, rat01, pre1
+                st_rx1, pk_rx1, rat_rx1, pre_rx1 = st10, pk10, rat10, pre0
+                ref_bits_rx0, ref_bits_rx1 = ref_bits1, ref_bits0
+                ref_qpsk_rx0, ref_qpsk_rx1 = ref_qpsk1, ref_qpsk0
+
+            # Require decent correlation margin and valid frame range.
+            lock0 = rat_rx0 > 6.0 and (st_rx0 + frame_len <= len(rx0))
+            lock1 = rat_rx1 > 6.0 and (st_rx1 + frame_len <= len(rx1))
 
             msg = (
-                f"ch0: start={st0:6d}, peak/med={rat0:7.2f} | "
-                f"ch1: start={st1:6d}, peak/med={rat1:7.2f}"
+                f"{map_name} | "
+                f"rx0: start={st_rx0:6d}, peak={pk_rx0:6.3f}, peak/med={rat_rx0:6.2f} | "
+                f"rx1: start={st_rx1:6d}, peak={pk_rx1:6.3f}, peak/med={rat_rx1:6.2f}"
             )
 
             if not (lock0 and lock1):
-                print(msg + "  [searching]")
-                t_hist.append(t_rel)
-                ber0_hist.append(np.nan)
-                ber1_hist.append(np.nan)
+                print(msg + "  [searching/weak lock]")
                 continue
 
-            fr0 = rx0[st0 : st0 + frame_len]
-            fr1 = rx1[st1 : st1 + frame_len]
+            fr0 = rx0[st_rx0 : st_rx0 + frame_len]
+            fr1 = rx1[st_rx1 : st_rx1 + frame_len]
+
+            # Coarse CFO estimation from detected preamble and correction per channel.
+            rx_pre0 = fr0[: len(pre_rx0)]
+            rx_pre1 = fr1[: len(pre_rx1)]
+            cfo0_hz = estimate_cfo_hz_from_preamble(rx_pre0, pre_rx0, FS)
+            cfo1_hz = estimate_cfo_hz_from_preamble(rx_pre1, pre_rx1, FS)
+            cfo0_hz = float(np.clip(cfo0_hz, -CFO_MAX_HZ, CFO_MAX_HZ))
+            cfo1_hz = float(np.clip(cfo1_hz, -CFO_MAX_HZ, CFO_MAX_HZ))
+            fr0 = apply_cfo_correction(fr0, cfo0_hz, FS)
+            fr1 = apply_cfo_correction(fr1, cfo1_hz, FS)
+
             data_syms0 = extract_data_symbols(fr0, N_DATA_SYMBOLS, N_FFT, N_CP, N_GUARD_SAMPLES)
             data_syms1 = extract_data_symbols(fr1, N_DATA_SYMBOLS, N_FFT, N_CP, N_GUARD_SAMPLES)
             if data_syms0 is None or data_syms1 is None:
                 print(msg + "  [short frame]")
                 continue
 
-            sc0 = data_syms0[:, idx_data].reshape(-1)
-            sc1 = data_syms1[:, idx_data].reshape(-1)
+            sc0_flat = data_syms0[:, idx_data].reshape(-1)
+            sc1_flat = data_syms1[:, idx_data].reshape(-1)
 
-            dec0 = qpsk_slicer(sc0)
-            dec1 = qpsk_slicer(sc1)
-            err0 = sc0 - dec0
-            err1 = sc1 - dec1
+            dec0 = qpsk_slicer(sc0_flat)
+            dec1 = qpsk_slicer(sc1_flat)
+            err0 = sc0_flat - dec0
+            err1 = sc1_flat - dec1
             evm0 = 100.0 * np.sqrt(np.mean(np.abs(err0) ** 2) / (np.mean(np.abs(dec0) ** 2) + 1e-12))
             evm1 = 100.0 * np.sqrt(np.mean(np.abs(err1) ** 2) / (np.mean(np.abs(dec1) ** 2) + 1e-12))
 
             rx_sc0 = data_syms0[:, idx_data]
             rx_sc1 = data_syms1[:, idx_data]
 
-            # Single-tap per-subcarrier equalization using known deterministic symbols.
-            h0 = np.mean(rx_sc0 * np.conj(ref_qpsk0), axis=0) / (
-                np.mean(np.abs(ref_qpsk0) ** 2, axis=0) + 1e-12
-            )
-            h1 = np.mean(rx_sc1 * np.conj(ref_qpsk1), axis=0) / (
-                np.mean(np.abs(ref_qpsk1) ** 2, axis=0) + 1e-12
-            )
-            eq0 = rx_sc0 / (h0[None, :] + 1e-12)
-            eq1 = rx_sc1 / (h1[None, :] + 1e-12)
+            eq0_d, bits0_d, mode0_d, eq0_c, bits0_c, mode0_c = equalize_and_detect_bits(rx_sc0, ref_qpsk_rx0)
+            eq1_d, bits1_d, mode1_d, eq1_c, bits1_c, mode1_c = equalize_and_detect_bits(rx_sc1, ref_qpsk_rx1)
 
-            rx_bits0 = qpsk_bits_from_symbols(eq0)
-            rx_bits1 = qpsk_bits_from_symbols(eq1)
-            bit_err0 = int(np.count_nonzero(rx_bits0 != ref_bits0))
-            bit_err1 = int(np.count_nonzero(rx_bits1 != ref_bits1))
-            nbits = int(ref_bits0.size)
+            bit_err0_d = int(np.count_nonzero(bits0_d != ref_bits_rx0))
+            bit_err0_c = int(np.count_nonzero(bits0_c != ref_bits_rx0))
+            bit_err1_d = int(np.count_nonzero(bits1_d != ref_bits_rx1))
+            bit_err1_c = int(np.count_nonzero(bits1_c != ref_bits_rx1))
+
+            if bit_err0_d <= bit_err0_c:
+                eq0 = eq0_d
+                rx_bits0 = bits0_d
+                bit_err0 = bit_err0_d
+                mode0 = mode0_d
+            else:
+                eq0 = eq0_c
+                rx_bits0 = bits0_c
+                bit_err0 = bit_err0_c
+                mode0 = mode0_c
+
+            if bit_err1_d <= bit_err1_c:
+                eq1 = eq1_d
+                rx_bits1 = bits1_d
+                bit_err1 = bit_err1_d
+                mode1 = mode1_d
+            else:
+                eq1 = eq1_c
+                rx_bits1 = bits1_c
+                bit_err1 = bit_err1_c
+                mode1 = mode1_c
+            nbits = int(ref_bits_rx0.size)
             ber0 = bit_err0 / nbits
             ber1 = bit_err1 / nbits
 
+            cum_err0 += bit_err0
+            cum_err1 += bit_err1
+            cum_bits += nbits
+            ber_cum0 = cum_err0 / cum_bits
+            ber_cum1 = cum_err1 / cum_bits
+
             t_hist.append(t_rel)
-            ber0_hist.append(ber0)
-            ber1_hist.append(ber1)
+            ber_cum0_hist.append(ber_cum0)
+            ber_cum1_hist.append(ber_cum1)
 
-            # Keep recent history window for readability
-            if len(t_hist) > 300:
-                t_hist = t_hist[-300:]
-                ber0_hist = ber0_hist[-300:]
-                ber1_hist = ber1_hist[-300:]
+            if len(t_hist) > 400:
+                t_hist = t_hist[-400:]
+                ber_cum0_hist = ber_cum0_hist[-400:]
+                ber_cum1_hist = ber_cum1_hist[-400:]
 
-            line_ber0.set_data(t_hist, ber0_hist)
-            line_ber1.set_data(t_hist, ber1_hist)
+            line_ber0.set_data(t_hist, ber_cum0_hist)
+            line_ber1.set_data(t_hist, ber_cum1_hist)
             if t_hist:
-                ax.set_xlim(max(0.0, t_hist[0]), max(1.0, t_hist[-1]))
+                ax_ber.set_xlim(max(0.0, t_hist[0]), max(1.0, t_hist[-1]))
+
+            z0 = np.column_stack([eq0.real.ravel(), eq0.imag.ravel()])
+            z1 = np.column_stack([eq1.real.ravel(), eq1.imag.ravel()])
+            if len(z0) > _const_max_pts:
+                r0 = np.random.default_rng(0).choice(len(z0), _const_max_pts, replace=False)
+                z0 = z0[r0]
+            if len(z1) > _const_max_pts:
+                r1 = np.random.default_rng(1).choice(len(z1), _const_max_pts, replace=False)
+                z1 = z1[r1]
+            sc_plot0.set_offsets(z0)
+            sc_plot1.set_offsets(z1)
+
             fig.canvas.draw()
             fig.canvas.flush_events()
 
             print(
                 msg
-                + f"  [LOCK] EVM: ch0={evm0:6.2f}% ch1={evm1:6.2f}%"
-                + f" | BER: ch0={ber0:.3e} ({bit_err0}/{nbits})"
-                + f" ch1={ber1:.3e} ({bit_err1}/{nbits})"
+                + f"  [LOCK] CFO: ch0={cfo0_hz:+9.1f} Hz ch1={cfo1_hz:+9.1f} Hz"
+                + f" | EVM: ch0={evm0:6.2f}% ch1={evm1:6.2f}%"
+                + f" | mode: ch0={mode0}, ch1={mode1}"
+            )
+            print(
+                f"  BER frame: ch0={ber0:.6e} ({bit_err0}/{nbits})  "
+                f"ch1={ber1:.6e} ({bit_err1}/{nbits})"
+            )
+            print(
+                f"  BER cum:   ch0={ber_cum0:.6e} ({cum_err0}/{cum_bits})  "
+                f"ch1={ber_cum1:.6e} ({cum_err1}/{cum_bits})"
             )
 
     except KeyboardInterrupt:
