@@ -140,8 +140,8 @@ def main() -> None:
     sdr.tx_enabled_channels = [0, 1]
     sdr.gain_control_mode_chan0 = "manual"
     sdr.gain_control_mode_chan1 = "manual"
-    sdr.tx_hardwaregain_chan0 = int(-20)
-    sdr.tx_hardwaregain_chan1 = int(-20)
+    sdr.tx_hardwaregain_chan0 = int(0)
+    sdr.tx_hardwaregain_chan1 = int(0)
     sdr.tx_cyclic_buffer = True
 
     t0, t1 = build_frame_complex64(ZC_ROOT_CH0, ZC_ROOT_CH1)
