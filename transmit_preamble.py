@@ -17,7 +17,7 @@ import numpy as np
 
 # --- RF / interface ---
 URI_TX = "ip:192.168.2.1"
-LO = int(3.19e9)
+LO = int(2.19e9)
 
 # OFDM: Δf = Fs / N_FFT  ->  Fs = N_FFT * 30 kHz
 N_FFT = 1024
