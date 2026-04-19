@@ -37,8 +37,9 @@ N_DATA_SYMBOLS = 32
 # Shared deterministic payload seed (must match receiver_zhadoff.py)
 PAYLOAD_SEED = 20260413
 
-# DAC scaling (Pluto / AD9361 style int16 path; pyadi packs complex → int16)
-TX_SCALE = 1.0 * (2**14)
+# DAC scaling target after crest-factor normalization.
+# Using full 2**14 with OFDM can clip badly because of high PAPR.
+TX_SCALE_TARGET = 0.35 * (2**14)
 
 
 def zadoff_chu(length: int, root: int) -> np.ndarray:
@@ -145,8 +146,13 @@ def main() -> None:
 
     t0, t1 = build_frame_complex64(ZC_ROOT_CH0, ZC_ROOT_CH1)
     n = min(len(t0), len(t1))
-    t0 = t0[:n] * TX_SCALE
-    t1 = t1[:n] * TX_SCALE
+    t0 = t0[:n]
+    t1 = t1[:n]
+
+    # Normalize both channels jointly to avoid clipping in cyclic TX.
+    peak = float(max(np.max(np.abs(t0)), np.max(np.abs(t1)), 1e-9))
+    t0 = (t0 / peak) * TX_SCALE_TARGET
+    t1 = (t1 / peak) * TX_SCALE_TARGET
 
     print(
         f"Fs={FS/1e6:.3f} MHz, Δf={SUBCARRIER_SPACING_HZ/1e3:.0f} kHz, N_FFT={N_FFT}, "
@@ -155,7 +161,8 @@ def main() -> None:
     print(
         f"Preamble: ZC OFDM (roots {ZC_ROOT_CH0} / {ZC_ROOT_CH1}), "
         f"then {N_DATA_SYMBOLS} deterministic QPSK symbols per channel (cyclic TX). "
-        f"payload_seed={PAYLOAD_SEED} (ch1 uses seed+1)."
+        f"payload_seed={PAYLOAD_SEED} (ch1 uses seed+1), tx_scale_target={TX_SCALE_TARGET:.0f}, "
+        f"norm_peak={peak:.3f}."
     )
 
     sdr.tx([t0, t1])
