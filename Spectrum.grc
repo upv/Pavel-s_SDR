@@ -37,7 +37,7 @@ blocks:
   id: variable
   parameters:
     comment: ''
-    value: int(3190e6)
+    value: int(2190e6)
   states:
     bus_sink: false
     bus_source: false
@@ -92,7 +92,7 @@ blocks:
     affinity: ''
     agc: 'False'
     alias: ''
-    bandwidth: int(1e6)
+    bandwidth: int(sample_rate)
     center_freq: Central_Frequency
     comment: ''
     dev_args: 192.168.2.2

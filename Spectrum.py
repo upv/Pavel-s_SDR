@@ -60,7 +60,7 @@ class Spectrum(gr.top_block, Qt.QWidget):
         # Variables
         ##################################################
         self.sample_rate = sample_rate = int(30.72e6)
-        self.Central_Frequency = Central_Frequency = int(3190e6)
+        self.Central_Frequency = Central_Frequency = int(2190e6)
 
         ##################################################
         # Blocks
@@ -75,7 +75,7 @@ class Spectrum(gr.top_block, Qt.QWidget):
         self.soapy_plutosdr_source_0 = soapy.source(dev, "fc32", 1, '192.168.2.2',
                                   stream_args, tune_args, settings)
         self.soapy_plutosdr_source_0.set_sample_rate(0, sample_rate)
-        self.soapy_plutosdr_source_0.set_bandwidth(0, int(1e6))
+        self.soapy_plutosdr_source_0.set_bandwidth(0, int(sample_rate))
         self.soapy_plutosdr_source_0.set_gain_mode(0, False)
         self.soapy_plutosdr_source_0.set_frequency(0, Central_Frequency)
         self.soapy_plutosdr_source_0.set_gain(0, min(max(73, 0.0), 73.0))
@@ -120,6 +120,7 @@ class Spectrum(gr.top_block, Qt.QWidget):
         self.sample_rate = sample_rate
         self.qtgui_sink_x_0.set_frequency_range(self.Central_Frequency, self.sample_rate)
         self.soapy_plutosdr_source_0.set_sample_rate(0, self.sample_rate)
+        self.soapy_plutosdr_source_0.set_bandwidth(0, int(self.sample_rate))
 
     def get_Central_Frequency(self):
         return self.Central_Frequency
