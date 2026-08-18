@@ -14,24 +14,20 @@ PILOT_ROOTS = (21, 23, 25)
 FS_CAPTURE = 7.68e6  # Hz, as stated in the assignment
 FS_NATIVE = 1.92e6  # Hz, OFDM native rate (decimate by 4)
 DECIM = 4
-DC_BIN = N_FFT // 2  # bin 64 in a 128-point fftshifted grid (MATLAB index 65)
+DC_BIN = N_FFT // 2  # bin 64 in a 128-point fftshifted grid
 
-# ---------------------------------------------------------------------------
 # Zadoff-Chu local replicas
-# ---------------------------------------------------------------------------
+# Generates Zadoff-Chu squences for given roots and length of sequence
 def zc_sequence(root, n=ZC_LEN):
     m = np.arange(n)
     return np.exp(-1j * np.pi * root * m * (m + 1) / n)
 
-def pilot_time_symbol(root):
-    """Build the time-domain OFDM pilot symbol (without CP).
 
+def pilot_time_symbol(root):
+    """
     Subcarrier map per the spec: 128 bins, DC at bin index 64 (0-based),
     lower side = bins 0..63, upper side = bins 65..127, ZC split across
-    them in order. `centered=True` treats that layout as an fftshifted
-    spectrum (ifftshift before the IFFT); `centered=False` treats the bin
-    indices as raw FFT indices. Both are tried during detection since the
-    transmitter's convention isn't fully pinned down by the comment.
+    them in order
     """
     zc = zc_sequence(root)
     X = np.zeros(N_FFT, dtype=complex)
@@ -151,7 +147,6 @@ fig.suptitle("Normalized cross-correlation with candidate ZC pilot symbols")
 fig.tight_layout()
 fig.savefig("zc_correlation.png", dpi=130)
 
-pass
 
 
 

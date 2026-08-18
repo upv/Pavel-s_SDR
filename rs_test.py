@@ -1,4 +1,5 @@
 import numpy as np
+import matplotlib.pyplot as plt
 
 ZC_LEN = 127
 
@@ -13,10 +14,12 @@ def zadoff_chu(root: int, length: int = ZC_LEN) -> np.ndarray:
 sig_1 = zadoff_chu(21)
 sig_1 = sig_1 / np.linalg.norm(sig_1)
 
-sig_2 = zadoff_chu(25)
+sig_2 = zadoff_chu(23)
 sig_2 = sig_2 / np.linalg.norm(sig_2)
 
 corr = np.abs(np.sum(sig_1.conj() * sig_2))
+
+# plt.plot(np.real(sig_1))
 
 pass
 
