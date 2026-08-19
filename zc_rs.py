@@ -156,10 +156,12 @@ scores = per_symbol_zc_scores(rx_bb, timing=frame_start)
 pilot_syms, root_col = find_pilot_symbol_indices(scores)
 detected_root = PILOT_ROOTS[root_col]
 
+#   print results to console
 print(f"matched-filter root {best_root}, peak at sample {best_start}")
 print(f"frame start {frame_start}, root {detected_root}, "
       f"pilot symbols {pilot_syms}")
 
+#   plot correlation
 plot_detection(corrs, scores, detected_root, pilot_syms, frame_start)
 
 
