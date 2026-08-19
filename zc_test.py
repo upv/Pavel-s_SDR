@@ -23,7 +23,7 @@ from scipy import signal
 # ---------------------------------------------------------------------------
 # Parameters
 # ---------------------------------------------------------------------------
-BIN_PATH = Path(__file__).resolve().parent / "q15_ofdm_waveform.bin"
+path = './q15_ofdm_waveform.bin'
 
 N_FFT = 128
 CP_LEN = 16
@@ -41,11 +41,11 @@ DC_BIN = N_FFT // 2  # bin 64 in a 128-point fftshifted grid (MATLAB index 65)
 # ---------------------------------------------------------------------------
 # Q1 — Read Q15 interleaved IQ and convert to complex float in [-1, +1)
 # ---------------------------------------------------------------------------
-def read_q15_iq(path: Path) -> np.ndarray:
+def read_q15_iq(filename: Path) -> np.ndarray:
     """Read interleaved int16 I/Q and scale by 2^-15."""
-    raw = np.fromfile(path, dtype=np.int16)
+    raw = np.fromfile(filename, dtype=np.int16)
     if raw.size % 2:
-        raise ValueError(f"{path} has an odd number of int16 values")
+        raise ValueError(f"{filename} has an odd number of int16 values")
     iq = raw.astype(np.float64) / 32768.0  # Q15: [-1, +1)
     return iq[0::2] + 1j * iq[1::2]
 
@@ -53,11 +53,11 @@ def read_q15_iq(path: Path) -> np.ndarray:
 # ---------------------------------------------------------------------------
 # Q2 — Anti-alias and downsample 7.68 MHz -> 1.92 MHz
 # ---------------------------------------------------------------------------
-def downsample_4x(x: np.ndarray, fs_hi: float = FS_CAPTURE) -> np.ndarray:
+def downsample_4x(rx: np.ndarray, fs_hi: float = FS_CAPTURE) -> np.ndarray:
     """FIR low-pass (cutoff just below the 1.92 MHz Nyquist) then keep every 4th sample."""
     cutoff = 0.9 * (fs_hi / DECIM) / 2.0  # 0.9 * 960 kHz
     taps = signal.firwin(numtaps=65, cutoff=cutoff, fs=fs_hi)
-    return signal.lfilter(taps, 1.0, x)[::DECIM]
+    return signal.lfilter(taps, 1.0, rx)[::DECIM]
 
 
 # ---------------------------------------------------------------------------
@@ -234,87 +234,36 @@ def plot_q3(corrs: dict, best: dict, scores: np.ndarray, pilot_syms: list[int]) 
     fig.savefig(Path(__file__).parent / "q3_zc_correlation.png", dpi=120)
 
 
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-def main() -> None:
-    # Q1
-    x = read_q15_iq(BIN_PATH)
-    print("=" * 64)
-    print("Q1  Read and convert Q15 IQ")
-    print("=" * 64)
-    print(f"  file          : {BIN_PATH.name}")
-    print(f"  complex samples: {len(x)}")
-    print(f"  I range       : [{x.real.min():+.6f}, {x.real.max():+.6f}]")
-    print(f"  Q range       : [{x.imag.min():+.6f}, {x.imag.max():+.6f}]")
-    print(f"  |z| max       : {np.abs(x).max():.6f}  (must be < 1)")
-    print("  scaling       : int16 / 32768  →  [-1, +1)")
-
-    # Q2
-    x_ds = downsample_4x(x)
-    print()
-    print("=" * 64)
-    print("Q2  Downsample 7.68 MHz → 1.92 MHz")
-    print("=" * 64)
-    print(f"  FIR cutoff    : {0.9 * (FS_CAPTURE / DECIM) / 2 / 1e3:.1f} kHz, decimate by {DECIM}")
-    print(f"  length after  : {len(x_ds)} samples")
-    print(f"  9 symbols @ 1.92 MHz would be {N_SYM * SYM_LEN} samples")
-    if len(x) == N_SYM * SYM_LEN:
-        print("  NOTE: the file is already 1296 samples = 9 × (128+16),")
-        print("        i.e. native 1.92 MHz. ZC search uses this signal,")
-        print("        not the extra ×4 decimation (that would leave 324 samples).")
-        rx = x
-        fs = FS_NATIVE
-    else:
-        rx = x_ds
-        fs = FS_NATIVE
-
-    # Q3
-    corrs, best = search_zc(rx)
-    scores = per_symbol_zc_scores(rx, timing=0)
-    pilot_syms, root_col = find_pilot_symbol_indices(scores)
-    detected_root = PILOT_ROOTS[root_col]
-
-    # If the frame is not aligned at sample 0, infer timing from the matched-filter peak
-    frame_start = best["start"] % SYM_LEN
-    scores_aligned = per_symbol_zc_scores(rx, timing=frame_start)
-    pilot_syms_aligned, _ = find_pilot_symbol_indices(scores_aligned)
-
-    print()
-    print("=" * 64)
-    print("Q3  Zadoff-Chu search")
-    print("=" * 64)
-    print("  3.2 most likely root index :", best["root"])
-    print("  3.2 starting position      : sample", best["start"],
-          f"({best['start'] / fs * 1e6:.3f} µs at {fs/1e6:.2f} MHz)")
-    print(f"       (start of CP of the first pilot OFDM symbol; "
-          f"useful IFFT starts at {best['start'] + CP_LEN})")
-    print("  3.2 peak correlation       :", f"{best['peak']:.6f}")
-    print()
-    print("  3.1 Zadoff-Chu OFDM symbols (0-based):", pilot_syms_aligned)
-    if len(pilot_syms_aligned) >= 2:
-        n = pilot_syms_aligned[0]
-        print(f"       n = {n}, n+2 = {n + 2}  "
-              f"(MATLAB 1-based: symbols {n + 1} and {n + 3})")
-    print()
-    print("  Per-symbol freq-domain scores (timing = "
-          f"{frame_start}):")
-    hdr = "    sym | " + "  ".join(f"root {r:>2d}" for r in PILOT_ROOTS)
-    print(hdr)
-    for s in range(N_SYM):
-        row = "    %3d |" % s
-        for i in range(len(PILOT_ROOTS)):
-            row += f"   {scores_aligned[s, i]:6.3f}"
-        if s in pilot_syms_aligned:
-            row += "   <-- ZC pilot"
-        print(row)
-
-    plot_q1_q2(x, x_ds)
-    plot_q3(corrs, best, scores_aligned, pilot_syms_aligned)
-    print()
-    print("Saved q1_q2_iq_downsample.png and q3_zc_correlation.png")
-    plt.show()
 
 
-if __name__ == "__main__":
-    main()
+#   read the bin file, format Q15 - 15 bits fixed-point numbers interleaved real and image
+#   one bit for sign, normalized by 2 ** 15 = 32768
+x_hi = read_q15_iq(Path(path))
+
+# Q2
+x_ds = downsample_4x(x_hi)
+
+#   the matter is that in task description it is said that signal oversampled by 4 and we need to downsample
+# it. But by the number of samples (16 + 128) * 9 = 1 296. Also if we measure spectrum there is not 1 / 4 
+#   of spectrum occupied but full spectrum. Also trying to find anything in downsampled samples leads to
+#   nothing
+P = np.abs(np.fft.fftshift(np.fft.fft(x_hi * np.hanning(len(x_hi))))) ** 2
+frac_center = P[3*len(P)//8:5*len(P)//8].sum() / P.sum()
+sig_filt = x_ds if frac_center > 0.8 else x_hi
+
+# Q3
+corrs, best = search_zc(sig_filt)
+scores = per_symbol_zc_scores(sig_filt, timing=0)
+pilot_syms, root_col = find_pilot_symbol_indices(scores)
+detected_root = PILOT_ROOTS[root_col]
+
+# If the frame is not aligned at sample 0, infer timing from the matched-filter peak
+frame_start = best["start"] % SYM_LEN
+scores_aligned = per_symbol_zc_scores(sig_filt, timing=frame_start)
+pilot_syms_aligned, _ = find_pilot_symbol_indices(scores_aligned)
+
+plot_q1_q2(x_hi, x_ds)
+plot_q3(corrs, best, scores_aligned, pilot_syms_aligned)
+plt.show()
+
+
