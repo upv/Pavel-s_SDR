@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-Приёмник (Orange Pi AIpro + второй AntSDR E310).
+Receiver (Orange Pi AIpro + second AntSDR E310).
 
-Захватывает буфер IQ (или читает записанный .npy), прогоняет цепочку:
-Шмидл-Кокс -> дробный CFO -> целочисленный CFO -> точный тайминг по ZC ->
-LS-оценка канала -> фазовый трекинг -> задержка -> эквализация -> EVM.
+Captures an IQ buffer (or reads a recorded .npy) and runs:
+Schmidl-Cox -> fractional CFO -> integer CFO -> fine ZC timing ->
+LS channel estimate -> phase tracking -> delay -> equalization -> EVM.
 
-Примеры:
+Examples:
     python rx_e310.py --uri usb: --freq 2.4e9 --gain 40 --save-raw cap.npy --plot
     python rx_e310.py --uri ip:192.168.2.1 --freq 2.4e9 --gain 40 --save-raw cap.npy --plot
-    python rx_e310.py --file cap.npy --plot          # оффлайн-обработка записи
+    python rx_e310.py --file cap.npy --plot          # offline: process a recording
 """
 
 import argparse
@@ -23,23 +23,57 @@ for _p in ("/home/pavel/pyadi-iio/", "/home/pavel/libiio"):
         sys.path.append(_p)
 
 
-def capture(args, cfg):
+def _as_iq(x):
+    if isinstance(x, (list, tuple)):
+        x = x[0]
+    return np.asarray(x, dtype=np.complex64)
+
+
+def _open_sdr(args):
     import adi
-    if args.driver == "pluto":
-        sdr = adi.Pluto(uri=args.uri)
-    else:
-        sdr = adi.ad9361(uri=args.uri)
-        sdr.rx_enabled_channels = [0]
+    uris = [args.uri]
+    if args.uri != "usb:":
+        uris.append("usb:")
+    last_err = None
+    for uri in uris:
+        try:
+            sdr = adi.Pluto(uri=uri) if args.driver == "pluto" else adi.ad9361(uri=uri)
+            if uri != args.uri:
+                print(f"{args.uri} unreachable, using {uri}")
+            return sdr
+        except Exception as e:
+            last_err = e
+    raise last_err
+
+
+def capture(args, cfg):
+    sdr = _open_sdr(args)
+    sdr.rx_enabled_channels = [0]
+    try:
+        sdr.tx_destroy_buffer()
+    except Exception:
+        pass
+    try:
+        sdr.rx_destroy_buffer()
+    except Exception:
+        pass
 
     sdr.sample_rate = int(cfg.FS)
     sdr.rx_rf_bandwidth = int(cfg.FS)
     sdr.rx_lo = int(args.freq)
-    sdr.gain_control_mode_chan0 = "manual"   # AGC выключен: оценки канала сравнимы между захватами
+    sdr.gain_control_mode_chan0 = "manual"   # AGC off: channel estimates comparable across captures
     sdr.rx_hardwaregain_chan0 = args.gain
     sdr.rx_buffer_size = args.nsamp
-    _ = sdr.rx()                             # первый буфер после настройки — выбросить
-    rx = sdr.rx().astype(np.complex64)
+    if int(sdr.sample_rate) != int(cfg.FS):
+        print(f"warning: sample_rate={sdr.sample_rate}, expected {int(cfg.FS)}")
+
+    _ = sdr.rx()                             # discard first buffer after retune
+    rx = _as_iq(sdr.rx())
     sdr.rx_destroy_buffer()
+    rms = float(np.sqrt(np.mean(np.abs(rx) ** 2)))
+    print(f"RX capture: {len(rx)} samples, fs={sdr.sample_rate / 1e6:.2f} MHz, "
+          f"LO={sdr.rx_lo / 1e6:.1f} MHz, gain={sdr.rx_hardwaregain_chan0:.0f} dB, "
+          f"rms={rms:.1f}, peak={np.max(np.abs(rx)):.1f}")
     return rx
 
 
@@ -53,28 +87,28 @@ def make_plots(rx, res, ref, prefix):
 
     ax[0, 0].plot(res.sc_metric)
     ax[0, 0].axvline(res.coarse_idx, color="r", ls="--", lw=1)
-    ax[0, 0].set_title("Метрика Шмидла-Кокса")
-    ax[0, 0].set_xlabel("отсчёт")
+    ax[0, 0].set_title("Schmidl-Cox metric")
+    ax[0, 0].set_xlabel("sample")
 
     ax[0, 1].plot(ref.pilot_offsets * cfg.SCS / 1e6,
                   20 * np.log10(np.abs(res.H) + 1e-9))
-    ax[0, 1].set_title("|H(f)|, дБ (усреднён по символам)")
-    ax[0, 1].set_xlabel("МГц от несущей")
+    ax[0, 1].set_title("|H(f)|, dB (averaged over symbols)")
+    ax[0, 1].set_xlabel("MHz from carrier")
 
     ax[1, 0].plot(ref.pilot_offsets * cfg.SCS / 1e6,
                   np.unwrap(np.angle(res.H)))
-    ax[1, 0].set_title("фаза H(f), рад")
-    ax[1, 0].set_xlabel("МГц от несущей")
+    ax[1, 0].set_title("phase H(f), rad")
+    ax[1, 0].set_xlabel("MHz from carrier")
 
     ax[1, 1].plot(res.eq_data.real.ravel(), res.eq_data.imag.ravel(),
                   ".", ms=2, alpha=0.4)
-    ax[1, 1].set_title(f"QPSK после эквализации, EVM = {res.evm_db:.1f} дБ")
+    ax[1, 1].set_title(f"Equalized QPSK, EVM = {res.evm_db:.1f} dB")
     ax[1, 1].set_xlim(-2, 2); ax[1, 1].set_ylim(-2, 2)
     ax[1, 1].set_aspect("equal")
 
     fig.tight_layout()
     fig.savefig(f"{prefix}_result.png", dpi=130)
-    print(f"график: {prefix}_result.png")
+    print(f"plot: {prefix}_result.png")
 
 
 def main():
@@ -82,10 +116,10 @@ def main():
     ap.add_argument("--uri", default="ip:192.168.2.1")
     ap.add_argument("--driver", choices=["pluto", "ad9361"], default="pluto")
     ap.add_argument("--freq", type=float, default=2.4e9)
-    ap.add_argument("--gain", type=float, default=40.0, help="усиление RX, дБ (AGC выключен)")
-    ap.add_argument("--nsamp", type=int, default=1 << 16, help="размер захвата")
-    ap.add_argument("--file", default=None, help="оффлайн: .npy с IQ вместо захвата")
-    ap.add_argument("--save-raw", default=None, help="сохранить сырой захват в .npy")
+    ap.add_argument("--gain", type=float, default=40.0, help="RX gain, dB (AGC off)")
+    ap.add_argument("--nsamp", type=int, default=1 << 16, help="capture size")
+    ap.add_argument("--file", default=None, help="offline: .npy IQ instead of a live capture")
+    ap.add_argument("--save-raw", default=None, help="save raw capture to .npy")
     ap.add_argument("--plot", action="store_true")
     args = ap.parse_args()
 
@@ -98,10 +132,13 @@ def main():
         rx = capture(args, cfg)
         if args.save_raw:
             np.save(args.save_raw, rx)
-            print(f"сырой захват: {args.save_raw}")
+            print(f"raw capture: {args.save_raw}")
 
     res = process_capture(rx, ref)
     print(summary(res, cfg))
+    if np.max(res.sc_metric) < 0.5 or res.snr_db < 0:
+        print("warning: no OFDM frame in the capture (looks like noise). "
+              "Is tx_e310.py running on the same frequency?")
 
     if args.plot:
         make_plots(rx, res, ref, prefix=args.file or "rx")
