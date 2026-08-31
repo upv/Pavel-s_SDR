@@ -1,0 +1,6 @@
+numpy>=1.20
+matplotlib>=3.8
+pyadi-iio==0.0.21
+# pylibiio 1.0 Python bindings — must match system libiio 1.0 (iio.framework).
+# PyPI's pylibiio 0.25 is the 0.x API and will not load this host library.
+pylibiio @ git+https://github.com/analogdevicesinc/libiio.git@1f802056#subdirectory=bindings/python

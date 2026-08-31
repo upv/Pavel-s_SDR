@@ -7,7 +7,34 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "justMyCode": true
+            "justMyCode": true,
+            "env": {
+                "MPLBACKEND": "macosx"
+            }
+        },
+        {
+            "name": "E310 TX",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/tx_e310.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": true,
+            "env": {
+                "MPLBACKEND": "macosx"
+            }
+        },
+        {
+            "name": "E310 RX",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/rx_e310.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "justMyCode": true,
+            "env": {
+                "MPLBACKEND": "macosx"
+            }
         },
         {
             "name": "Python: transmit_zhadoff",
