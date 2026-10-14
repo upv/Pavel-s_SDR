@@ -1,0 +1,5 @@
+# Run with the WirelessNN virtual environment: ~/Sources/WirelessNN/.venv (Sionna 2.x, PyTorch, NumPy, matplotlib).
+# Hardware access needs libiio 0.26 (Homebrew, arm64) and its pure-Python bindings (iio.py, see sdr.py).
+numpy
+matplotlib
+pytest
