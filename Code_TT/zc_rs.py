@@ -1,8 +1,16 @@
+import argparse
+from pathlib import Path
+
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import signal
 
-path = './q15_ofdm_waveform.bin'
+# The capture lives in archive/ since the repo reorganisation; resolve it
+# relative to this file so the script runs from any working directory.
+DEFAULT_PATH = (Path(__file__).resolve().parent.parent / "archive"
+                / "q15_ofdm_waveform.bin")
 
 N_FFT = 128
 CP_LEN = 16
@@ -141,37 +149,38 @@ def plot_detection(corrs, scores, detected_root, pilot_syms, frame_start):
         ax.grid(alpha=0.3)
         ax.legend(loc="upper right", fontsize=8)
     fig.tight_layout()
-    fig.savefig("zc_correlation.png", dpi=130)
+    out = Path(__file__).resolve().parent / "zc_correlation.png"
+    fig.savefig(out, dpi=130)
+    print(f"plot saved: {out.name}")
 
 
-rx_bb = load_baseband(path)
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Detect Zadoff-Chu pilot symbols in a Q15 OFDM capture")
+    parser.add_argument("path", nargs="?", default=DEFAULT_PATH, type=Path,
+                        help="Q15 interleaved IQ file (default: %(default)s)")
+    args = parser.parse_args(argv)
 
-#   let's form Zadoff-Chu sequences and calculate correaltion for all symbols and all roots
-corrs, best_root, best_start = search_zc(rx_bb)
+    rx_bb = load_baseband(args.path)
 
-# The peak sits at the start of the useful part, so back off the CP to get the
-# frame start; the frame is not necessarily aligned at sample 0.
-frame_start = (best_start - CP_LEN) % SYM_LEN
-scores = per_symbol_zc_scores(rx_bb, timing=frame_start)
-pilot_syms, root_col = find_pilot_symbol_indices(scores)
-detected_root = PILOT_ROOTS[root_col]
+    #   let's form Zadoff-Chu sequences and calculate correaltion for all symbols and all roots
+    corrs, best_root, best_start = search_zc(rx_bb)
 
-#   print results to console
-print(f"matched-filter root {best_root}, peak at sample {best_start}")
-print(f"frame start {frame_start}, root {detected_root}, "
-      f"pilot symbols {pilot_syms}")
+    # The peak sits at the start of the useful part, so back off the CP to get the
+    # frame start; the frame is not necessarily aligned at sample 0.
+    frame_start = (best_start - CP_LEN) % SYM_LEN
+    scores = per_symbol_zc_scores(rx_bb, timing=frame_start)
+    pilot_syms, root_col = find_pilot_symbol_indices(scores)
+    detected_root = PILOT_ROOTS[root_col]
 
-#   plot correlation
-plot_detection(corrs, scores, detected_root, pilot_syms, frame_start)
+    #   print results to console
+    print(f"matched-filter root {best_root}, peak at sample {best_start}")
+    print(f"frame start {frame_start}, root {detected_root}, "
+          f"pilot symbols {pilot_syms}")
 
-
-
-
-
-
-
-
-
+    #   plot correlation
+    plot_detection(corrs, scores, detected_root, pilot_syms, frame_start)
 
 
-
+if __name__ == "__main__":
+    main()
