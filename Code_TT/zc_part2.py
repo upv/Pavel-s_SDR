@@ -13,6 +13,7 @@ Q5:  In the CP region  r(k)*conj(r(k+N)) = |s|^2 * exp(-j*2*pi*eps),
      so  eps_hat = -angle(gamma(theta_hat)) / (2*pi)   [subcarrier units]
 """
 
+import argparse
 from pathlib import Path
 
 import numpy as np
@@ -20,7 +21,10 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-path = "./impaired_waveform_iq_float32.bin"
+# The capture lives in archive/ since the repo reorganisation; resolve it
+# relative to this file so the script runs from any working directory.
+DEFAULT_PATH = (Path(__file__).resolve().parent.parent / "archive"
+                / "impaired_waveform_iq_float32.bin")
 
 N       = 1024          # FFT size (the "N=128" in the model text is a typo;
 CP      = 128           # the file spec says FFT 1024 / CP 128)
@@ -59,55 +63,56 @@ def estimate(r, rho=0.99):
     return theta, eps, gamma, folded_metric, folded_gamma
 
 
-#   read samples
-r = read_f32_iq(path)
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
+    parser.add_argument("path", nargs="?", default=DEFAULT_PATH, type=Path,
+                        help="float32 interleaved IQ file (default: %(default)s)")
+    args = parser.parse_args(argv)
 
-#   Estimate required parameteres: Theta - Symbol Timing Offset
-#   eps - Carrier Frequency Offset, gamma - sliding window cross-correlation, 
-#   folded - folded metric for 6 symbols, fgamma - folded gamma for 6 symbols
-theta, eps, gamma, folded, fgamma = estimate(r)
+    #   read samples
+    r = read_f32_iq(args.path)
 
-print(f"\nQ4: STO  theta_hat = {theta} samples")
-print(f"Q5: CFO  eps_hat   = {eps:+.5f} subcarrier spacings "
-        f"(fractional part; = {eps:+.5f} * fs/{N} Hz for sample rate fs)")
+    #   Estimate required parameteres: Theta - Symbol Timing Offset
+    #   eps - Carrier Frequency Offset, gamma - sliding window cross-correlation, 
+    #   folded - folded metric for 6 symbols, fgamma - folded gamma for 6 symbols
+    theta, eps, gamma, folded, fgamma = estimate(r)
 
-# Per-symbol CFO estimates as a consistency check
-per_sym = []
-for m in range((len(r) - N - CP) // SYM_LEN + 1):
-    d = theta + m * SYM_LEN
-    if d + CP + N <= len(r):
-        g = np.sum(r[d:d+CP] * np.conj(r[d+N:d+N+CP]))
-        per_sym.append(-np.angle(g) / (2*np.pi))
-print(f"    per-symbol eps: {np.array2string(np.array(per_sym), precision=5)}")
-print(f"    std across symbols: {np.std(per_sym):.2e}")
+    print(f"\nQ4: STO  theta_hat = {theta} samples")
+    print(f"Q5: CFO  eps_hat   = {eps:+.5f} subcarrier spacings "
+            f"(fractional part; = {eps:+.5f} * fs/{N} Hz for sample rate fs)")
 
-fig, axes = plt.subplots(2, 1, figsize=(11, 7))
-axes[0].plot(np.abs(gamma), lw=0.8)
-for m in range(N_SYM):
-    d = theta + m * SYM_LEN
-    if d < len(gamma):
-        axes[0].axvline(d, color="crimson", ls="--", alpha=0.6)
-axes[0].set_title("|gamma(d)| — CP correlation over the whole file "
-                    "(dashed: detected symbol starts)")
-axes[0].set_xlabel("offset d (samples)"); axes[0].grid(alpha=0.3)
+    # Per-symbol CFO estimates as a consistency check
+    per_sym = []
+    for m in range((len(r) - N - CP) // SYM_LEN + 1):
+        d = theta + m * SYM_LEN
+        if d + CP + N <= len(r):
+            g = np.sum(r[d:d+CP] * np.conj(r[d+N:d+N+CP]))
+            per_sym.append(-np.angle(g) / (2*np.pi))
+    print(f"    per-symbol eps: {np.array2string(np.array(per_sym), precision=5)}")
+    print(f"    std across symbols: {np.std(per_sym):.2e}")
 
-axes[1].plot(folded, lw=1.0)
-axes[1].plot(theta, folded[theta], "rv", ms=11,
-                label=f"theta_hat = {theta}")
-axes[1].set_title("Folded ML metric  sum_m |gamma| - rho*Phi  "
-                    "(one symbol period, averaged over symbols)")
-axes[1].set_xlabel("offset within symbol period"); axes[1].grid(alpha=0.3)
-axes[1].legend()
-fig.tight_layout()
-out = Path(__file__).resolve().parent / "task2_sto_cfo.png"
-fig.savefig(out, dpi=130)
-print(f"\nplot saved: {out.name}")
+    fig, axes = plt.subplots(2, 1, figsize=(11, 7))
+    axes[0].plot(np.abs(gamma), lw=0.8)
+    for m in range(N_SYM):
+        d = theta + m * SYM_LEN
+        if d < len(gamma):
+            axes[0].axvline(d, color="crimson", ls="--", alpha=0.6)
+    axes[0].set_title("|gamma(d)| — CP correlation over the whole file "
+                        "(dashed: detected symbol starts)")
+    axes[0].set_xlabel("offset d (samples)"); axes[0].grid(alpha=0.3)
 
-
-
-
-
+    axes[1].plot(folded, lw=1.0)
+    axes[1].plot(theta, folded[theta], "rv", ms=11,
+                    label=f"theta_hat = {theta}")
+    axes[1].set_title("Folded ML metric  sum_m |gamma| - rho*Phi  "
+                        "(one symbol period, averaged over symbols)")
+    axes[1].set_xlabel("offset within symbol period"); axes[1].grid(alpha=0.3)
+    axes[1].legend()
+    fig.tight_layout()
+    out = Path(__file__).resolve().parent / "task2_sto_cfo.png"
+    fig.savefig(out, dpi=130)
+    print(f"\nplot saved: {out.name}")
 
 
-
-
+if __name__ == "__main__":
+    main()
