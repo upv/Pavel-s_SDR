@@ -1,0 +1,56 @@
+# Журнал экспериментов: SRK 5G NR, gNB U220 + UE E316
+
+Хост DGX Spark (GB10, DGX OS 7.6, драйвер 580, CUDA 13), Sionna Research Kit v1.3.3, OAI 2025.w34,
+OAI CN5G v2.1.10. Band 78 (n78/n48), DL/UL 3604.8 МГц TDD, 24 PRB, SCS 30 кГц, 15.36 MSps, PCI 0, SSB раз в 20 мс.
+
+## 2026-10-24 — сборка SRK, rfsim
+
+- Собраны образы `ran-base-cuda`, `ran-build-cuda`, `oai-gnb-cuda`, `oai-nr-ue-cuda`, `oai-flexric`; ядро — готовые arm64-образы.
+- `quickstart-cn5g.sh` заполнил диск копией корня (3.3 ТБ) из-за отсутствующего `patches/oai-cn5g.patch`; копия удалена.
+- rfsim: UE подключился, адрес 12.1.1.2, ping до ext-dn 5/5, ~15 мс.
+
+## 2026-10-25 — gNB на U220, приём SSB на E316 (Pluto-режим, pyadi-iio)
+
+- gNB на U220 по USB 3, 15.36 MSps, 0 underflow/overflow за 8 мин.
+- E316 на Mac (`tools/ssb_capture.py`, 100 мс): 5 SSB с периодом 20.000 мс, PCI 0, корреляция PSS 0.64 при шуме 0.044,
+  CFO −37.5 кГц.
+
+## 2026-10-25 — E316 как UE (UHD-прошивка), SISO
+
+- antsdr_uhd: `ANTSDR-E310V2` (E316), FPGA 16.0, 1 GbE; `benchmark_rate` 1 канал 15.36 MSps 10 с: 0 потерь, 2 underrun.
+- Проблемы и решения: segfault на типе `ant` → патч; синхронизация не шла — сигнал есть только на порту TX/RX
+  (PSS 0.99 против 0.20 на RX2) → `OAI_USRP_RX_ANTENNA=TX/RX`; CFO → `--initial-fo -37500`, UE измерил −36.5 кГц.
+- Результат: SIB1 → RACH → RRC Connected → PDU-сессия, 12.1.1.2, ping 10/10 (30–60 мс),
+  DL BLER 0.8%, UL BLER 0, UL SNR 36.5 дБ, MCS 3/0.
+
+## 2026-10-25 — уровни на портах E316 (SSB gNB, усиление 40 дБ)
+
+| Вход UHD | PSS, dBFS | Корреляция |
+|---|---|---|
+| канал 0, RX2 | −65 | 0.18 (шум) |
+| канал 0, TX/RX | −40 | 0.98 |
+| канал 1, RX2 | −55 | 0.77 |
+| канал 1, TX/RX | −36 | 0.99 |
+
+Антенны на RX-портах на 15–25 дБ хуже; вероятно, не рассчитаны на 3.3–3.8 ГГц (не подтверждено). Дальше — только порты TX/RX.
+
+## 2026-10-25 — 2x2 MIMO на портах TX/RX
+
+- gNB: `gnb.sa.band78.24prbs.2x2.conf`, приём через TX/RX на обоих каналах (`oai-gnb-cuda-txrx`).
+- E316 2 канала: `sc16` не влезает в 1 GbE (`benchmark_rate`: 829k потерянных отсчётов, 300k underrun);
+  `sc8` RX + `sc12` TX — 0 потерь; `sc12` RX — битые VRT-пакеты. 3/4 sampling невозможен (нет iDFT 384).
+- Первый запуск падал на `ERROR_CODE_OVERFLOW`; помогло `rmem/wmem_max = 62.5 МБ` и `recv/send_buff_size=50000000`.
+
+| Метрика | Значение |
+|---|---|
+| SSB-RSRP (отчёт UE) | −102 dBm (калибровка B210, абсолютно не откалибровано для E316) |
+| DL SINR (CSI-RS) | 30–34 дБ |
+| DL RI / CQI / PMI | **2** / 15 / i2 = 1 |
+| PBCH RSRP на входе UE | 49 дБ/RE |
+| UL SNR (PUSCH) | 34–62 дБ |
+| UL-RI / TPMI | 1 / 0 |
+| DL BLER / UL BLER | 5.6 % / 0 %, ошибок после HARQ 0 |
+| ping | 10/10, 20–80 мс |
+
+Следующие шаги: iperf DL/UL (прирост от 2 слоёв), UL 2 слоя, калибровка RSRP E316, антенны на 3.5 ГГц для RX-портов,
+нейроприёмник SRK (`--loader.receiver.shlibversion _trt`).

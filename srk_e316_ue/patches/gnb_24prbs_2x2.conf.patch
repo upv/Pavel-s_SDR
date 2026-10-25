@@ -1,0 +1,24 @@
+--- a/config/common/gnb.sa.band78.24prbs.conf
++++ b/config/common/gnb.sa.band78.24prbs.2x2.conf
+@@ -20,6 +20,10 @@
+ 
+     sib1_tda                    = 15;
+     min_rxtxtime                = 6;
++    pdsch_AntennaPorts_XP       = 2;
++    pusch_AntennaPorts          = 2;
++    do_CSIRS                    = 1;
++    do_SRS                      = 1;
+     # empirical observation: 6 required for USRP-based UE
+ 
+   pdcch_ConfigSIB1 = (
+@@ -213,8 +217,8 @@
+ RUs = (
+ {
+   local_rf       = "yes"
+-  nb_tx          = 1 # SISO #2;MIMO
+-  nb_rx          = 1 # SISO #2;MIMO
++  nb_tx          = 2 # 2x2 MIMO
++  nb_rx          = 2 # 2x2 MIMO
+   att_tx         = 0; # ranges 6-10 if the UE is close to the B210 antennas. Leave 0 otherwise
+   att_rx         = 0; # ranges 6-10 if the UE is close to the B210 antennas. Leave 0 otherwise
+   bands          = [78];

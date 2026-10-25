@@ -1,0 +1,29 @@
+#
+# SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# this is a template. remove the .template extension to use
+# contents of this file will be merged automatically with docker-compose.yaml
+# uncomment the relevant lines
+
+services:
+  oai-gnb:
+    environment:
+      OAI_USRP_RX_ANTENNA: ${GNB_RX_ANTENNA:-}  # receive on TX/RX port
+    volumes:
+      - ${U220_UHD_IMAGES_DIR}:/usr/local/share/uhd/images:ro  # U220 needs UHD 4.9 FPGA image
+      ##### Profiling tools if needed
+      # - /opt/nvidia/nsight-systems/:/opt/nvidia/nsight-systems
+    ##### Run gdbserver for debugging
+    #command: ["gdbserver",":7777","/opt/oai-gnb/bin/nr-softmodem","-O","/opt/oai-gnb/etc/gnb.conf"]
+    # Profile with Nsight Systems
+    #stdin_open: true # docker run -i
+    #tty: true        # docker run -t
+    #entrypoint: /bin/bash
+    #cap_add:
+    # - SYS_ADMIN
+  oai-nr-ue:
+    environment:
+      OAI_USRP_RX_ANTENNA: ${UE_RX_ANTENNA:-}  # E316: antenna on the TX/RX port only
+      OAI_USRP_RX_OTW: ${UE_RX_OTW:-}
+      OAI_USRP_TX_OTW: ${UE_TX_OTW:-}

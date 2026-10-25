@@ -1,0 +1,66 @@
+--- a/radio/USRP/usrp_lib.cpp
++++ b/radio/USRP/usrp_lib.cpp
+@@ -1116,11 +1116,15 @@
+     LOG_I(HW,"Found USRP %s\n", device_adds[0].get(type_str).c_str());
+     double usrp_master_clock;
+ 
+-    if (device_adds[0].get(type_str) == "b200") {
++    // ANTSDR E316/E200 with MicroPhase antsdr_uhd report type "ant": AD9361 like the B210,
++    // but over 1 GbE, so keep UHD default (MTU sized) frame sizes
++    const bool is_ant = device_adds[0].get(type_str) == "ant";
++    if (device_adds[0].get(type_str) == "b200" || is_ant) {
+       device->type = USRP_B200_DEV;
+       usrp_master_clock = 30.72e6;
+       args += boost::str(boost::format(",master_clock_rate=%f") % usrp_master_clock);
+-      args += ",num_send_frames=256,num_recv_frames=256, send_frame_size=7680, recv_frame_size=7680" ;
++      if (!is_ant)
++        args += ",num_send_frames=256,num_recv_frames=256, send_frame_size=7680, recv_frame_size=7680" ;
+     }
+ 
+     if (device_adds[0].get(type_str) == "n3xx") {
+@@ -1388,6 +1392,13 @@
+         openair0_cfg[0].rx_bw                 = 20e6;
+         break;
+ 
++      case 11520000: // 3/4 sampling of 15.36 MSps (-E), used with ANTSDR 2x2 over 1 GbE
++        s->usrp->set_master_clock_rate(23.04e6);
++        openair0_cfg[0].tx_sample_advance     = 90; // interpolated between 15.36 and 7.68 MSps values, to be checked
++        openair0_cfg[0].tx_bw                 = 10e6;
++        openair0_cfg[0].rx_bw                 = 10e6;
++        break;
++
+       case 7680000:
+         s->usrp->set_master_clock_rate(30.72e6);
+         //openair0_cfg[0].samples_per_packet    = 1024;
+@@ -1435,6 +1446,10 @@
+       s->usrp->set_rx_rate(cfg->sample_rate, i + choffset);
+       uhd::tune_request_t rx_tune_req(cfg->rx_freq[i], cfg->tune_offset);
+       s->usrp->set_rx_freq(rx_tune_req, i+choffset);
++      // optional RX antenna override, e.g. OAI_USRP_RX_ANTENNA=TX/RX when only the TX/RX port has an antenna
++      const char *rx_ant = getenv("OAI_USRP_RX_ANTENNA");
++      if (rx_ant && *rx_ant)
++        s->usrp->set_rx_antenna(rx_ant, i + choffset);
+       set_rx_gain_offset(cfg, i, bw_gain_adjust);
+       ::uhd::gain_range_t gain_range = s->usrp->get_rx_gain_range(i+choffset);
+       // limit to maximum gain
+@@ -1478,7 +1493,10 @@
+   LOG_I(HW,"Actual time source %s...\n",s->usrp->get_time_source(0).c_str());
+ 
+   // create tx & rx streamer
+-  uhd::stream_args_t stream_args_rx("sc16", "sc16");
++  // optional over-the-wire formats, e.g. OAI_USRP_RX_OTW=sc8 OAI_USRP_TX_OTW=sc12 to fit ANTSDR 2x2 into 1 GbE
++  const char *rx_otw = getenv("OAI_USRP_RX_OTW");
++  const char *tx_otw = getenv("OAI_USRP_TX_OTW");
++  uhd::stream_args_t stream_args_rx("sc16", rx_otw && *rx_otw ? rx_otw : "sc16");
+   for (int i = 0; i<openair0_cfg[0].rx_num_channels; i++) {
+     LOG_I(HW,"setting rx channel %d\n",i+choffset);
+     stream_args_rx.channels.push_back(i+choffset);
+@@ -1497,7 +1515,7 @@
+   LOG_I(HW,"rx_max_num_samps %zu\n",
+         s->rx_stream->get_max_num_samps());
+ 
+-  uhd::stream_args_t stream_args_tx("sc16", "sc16");
++  uhd::stream_args_t stream_args_tx("sc16", tx_otw && *tx_otw ? tx_otw : "sc16");
+ 
+   for (int i = 0; i<openair0_cfg[0].tx_num_channels; i++)
+     stream_args_tx.channels.push_back(i+choffset);
